@@ -544,7 +544,7 @@ pub struct DnsHeader {
     pub opcode: u8, // 4 bits
     pub response: bool, // 1 bit
 
-    pub rescode: ResultCode, // 4 bits
+    pub res_code: ResultCode, // 4 bits
     pub checking_disabled: bool, // 1 bit
     pub authed_data: bool, // 1 bit
     pub z: bool, // 1 bit
@@ -566,7 +566,7 @@ impl DnsHeader {
                     opcode: 0,
                     response: false,
 
-                    rescode: ResultCode::NOERROR,
+                    res_code: ResultCode::NOERROR,
                     checking_disabled: false,
                     authed_data: false,
                     z: false,
@@ -587,7 +587,7 @@ impl DnsHeader {
                               (self.opcode << 3) |
                               ((self.response as u8) << 7) as u8) );
 
-        try!(buffer.write_u8( (self.rescode.clone() as u8) |
+        try!(buffer.write_u8( (self.res_code.clone() as u8) |
                               ((self.checking_disabled as u8) << 4) |
                               ((self.authed_data as u8) << 5) |
                               ((self.z as u8) << 6) |
@@ -618,7 +618,7 @@ impl DnsHeader {
         self.opcode = (a >> 3) & 0x0F;
         self.response = (a & (1 << 7)) > 0;
 
-        self.rescode = ResultCode::from_num(b & 0x0F);
+        self.res_code = ResultCode::from_num(b & 0x0F);
         self.checking_disabled = (b & (1 << 4)) > 0;
         self.authed_data = (b & (1 << 5)) > 0;
         self.z = (b & (1 << 6)) > 0;
@@ -645,7 +645,7 @@ impl fmt::Display for DnsHeader {
         try!(write!(f, "\topcode: {0}\n", self.opcode));
         try!(write!(f, "\tresponse: {0}\n", self.response));
 
-        try!(write!(f, "\trescode: {:?}\n", self.rescode));
+        try!(write!(f, "\trescode: {:?}\n", self.res_code));
         try!(write!(f, "\tchecking_disabled: {0}\n", self.checking_disabled));
         try!(write!(f, "\tauthed_data: {0}\n", self.authed_data));
         try!(write!(f, "\tz: {0}\n", self.z));
@@ -720,7 +720,8 @@ pub struct DnsPacket {
     pub questions: Vec<DnsQuestion>,
     pub answers: Vec<DnsRecord>,
     pub authorities: Vec<DnsRecord>,
-    pub resources: Vec<DnsRecord>
+    pub resources: Vec<DnsRecord>,
+    start_time: u64
 }
 
 impl DnsPacket {
@@ -730,7 +731,8 @@ impl DnsPacket {
             questions: Vec::new(),
             answers: Vec::new(),
             authorities: Vec::new(),
-            resources: Vec::new()
+            resources: Vec::new(),
+            start_time: 0u64
         }
     }
 
@@ -784,6 +786,14 @@ impl DnsPacket {
         for x in &self.resources {
             println!("\t{:?}", x);
         }
+    }
+
+    pub fn set_start_time(&mut self, time: u64) {
+        self.start_time = time;
+    }
+
+    pub fn get_start_time(&self) -> u64 {
+        self.start_time
     }
 
     pub fn get_ttl_from_soa(&self) -> Option<u32> {

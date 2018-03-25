@@ -14,14 +14,11 @@ pub trait DnsResolver {
 
     fn get_context(&self) -> Arc<ServerContext>;
 
-    fn resolve(&mut self,
-               qname: &str,
-               qtype: QueryType,
-               recursive: bool) -> Result<DnsPacket> {
+    fn resolve(&mut self, qname: &str, qtype: QueryType, recursive: bool) -> Result<DnsPacket> {
 
         if let QueryType::UNKNOWN(_) = qtype {
             let mut packet = DnsPacket::new();
-            packet.header.rescode = ResultCode::NOTIMP;
+            packet.header.res_code = ResultCode::NOTIMP;
             return Ok(packet);
         }
 
@@ -33,7 +30,7 @@ pub trait DnsResolver {
 
         if !recursive || !context.allow_recursive {
             let mut packet = DnsPacket::new();
-            packet.header.rescode = ResultCode::REFUSED;
+            packet.header.res_code = ResultCode::REFUSED;
             return Ok(packet);
         }
 
@@ -75,9 +72,7 @@ impl DnsResolver for ForwardingDnsResolver {
         self.context.clone()
     }
 
-    fn perform(&mut self,
-               qname: &str,
-               qtype: QueryType) -> Result<DnsPacket> {
+    fn perform(&mut self, qname: &str, qtype: QueryType) -> Result<DnsPacket> {
 
         let &(ref host, port) = &self.server;
         let result = self.context.client.send_query(qname,
@@ -103,7 +98,7 @@ pub struct RecursiveDnsResolver {
 impl RecursiveDnsResolver {
     pub fn new(context: Arc<ServerContext>) -> RecursiveDnsResolver {
         RecursiveDnsResolver {
-            context: context
+            context
         }
     }
 }
@@ -113,11 +108,9 @@ impl DnsResolver for RecursiveDnsResolver {
         self.context.clone()
     }
 
-    fn perform(&mut self,
-               qname: &str,
-               qtype: QueryType) -> Result<DnsPacket> {
+    fn perform(&mut self, qname: &str, qtype: QueryType) -> Result<DnsPacket> {
 
-        // Find the closest name server by splitting the label and progessively
+        // Find the closest name server by splitting the label and progressively
         // moving towards the root servers. I.e. check "google.com", then "com",
         // and finally "".
         let mut tentative_ns = None;
@@ -152,14 +145,11 @@ impl DnsResolver for RecursiveDnsResolver {
             let ns_copy = ns.clone();
 
             let server = (ns_copy.as_str(), 53);
-            let response = try!(self.context.client.send_query(qname,
-                                                               qtype.clone(),
-                                                               server,
-                                                               false));
+            let response = self.context.client.send_query(qname, qtype.clone(), server, false)?;
 
             // If we've got an actual answer, we're done!
             if !response.answers.is_empty() &&
-               response.header.rescode == ResultCode::NOERROR {
+               response.header.res_code == ResultCode::NOERROR {
 
                 let _ = self.context.cache.store(&response.answers);
                 let _ = self.context.cache.store(&response.authorities);
@@ -167,7 +157,7 @@ impl DnsResolver for RecursiveDnsResolver {
                 return Ok(response.clone());
             }
 
-            if response.header.rescode == ResultCode::NXDOMAIN {
+            if response.header.res_code == ResultCode::NXDOMAIN {
                 if let Some(ttl) = response.get_ttl_from_soa() {
                     let _ = self.context.cache.store_nxdomain(qname, qtype, ttl);
                 }
@@ -193,9 +183,7 @@ impl DnsResolver for RecursiveDnsResolver {
             };
 
             // Recursively resolve the NS
-            let recursive_response = try!(self.resolve(&new_ns_name,
-                                                       QueryType::A,
-                                                       true));
+            let recursive_response = self.resolve(&new_ns_name, QueryType::A, true)?;
 
             // Pick a random IP and restart
             if let Some(new_ns) = recursive_response.get_random_a() {
@@ -232,7 +220,7 @@ mod tests {
                         ttl: TransientTtl(3600)
                     });
                 } else {
-                    packet.header.rescode = ResultCode::NXDOMAIN;
+                    packet.header.res_code = ResultCode::NXDOMAIN;
                 }
 
                 Ok(packet)
@@ -298,7 +286,7 @@ mod tests {
             };
 
             assert_eq!(0, res.answers.len());
-            assert_eq!(ResultCode::NXDOMAIN, res.header.rescode);
+            assert_eq!(ResultCode::NXDOMAIN, res.header.res_code);
         };
 
     }
@@ -308,7 +296,7 @@ mod tests {
         let context = create_test_context(
             Box::new(|_, _, _, _| {
                 let mut packet = DnsPacket::new();
-                packet.header.rescode = ResultCode::NXDOMAIN;
+                packet.header.res_code = ResultCode::NXDOMAIN;
                 Ok(packet)
             }));
 
@@ -325,7 +313,7 @@ mod tests {
         let context = create_test_context(
             Box::new(|_, _, _, _| {
                 let mut packet = DnsPacket::new();
-                packet.header.rescode = ResultCode::NXDOMAIN;
+                packet.header.res_code = ResultCode::NXDOMAIN;
                 Ok(packet)
             }));
 
@@ -392,7 +380,7 @@ mod tests {
                 }
 
                 packet.header.id = 999;
-                packet.header.rescode = ResultCode::NXDOMAIN;
+                packet.header.res_code = ResultCode::NXDOMAIN;
                 Ok(packet)
             }));
 
@@ -489,7 +477,7 @@ mod tests {
                         ttl: TransientTtl(3600)
                     });
                 } else {
-                    packet.header.rescode = ResultCode::NXDOMAIN;
+                    packet.header.res_code = ResultCode::NXDOMAIN;
 
                     packet.authorities.push(DnsRecord::SOA {
                         domain: "google.com".to_string(),
@@ -552,7 +540,7 @@ mod tests {
                 Err(_) => panic!()
             };
 
-            assert_eq!(ResultCode::NXDOMAIN, res.header.rescode);
+            assert_eq!(ResultCode::NXDOMAIN, res.header.res_code);
             assert_eq!(0, res.answers.len());
         };
 

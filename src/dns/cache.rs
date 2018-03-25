@@ -225,7 +225,7 @@ impl Cache {
             },
             CacheState::NegativeCache => {
                 let mut qr = DnsPacket::new();
-                qr.header.rescode = ResultCode::NXDOMAIN;
+                qr.header.res_code = ResultCode::NXDOMAIN;
 
                 Some(qr)
             },
@@ -355,7 +355,7 @@ mod tests {
 
         // Verify that we get a response, with the NXDOMAIN flag set
         if let Some(packet) = cache.lookup("www.google.com", QueryType::A) {
-            assert_eq!(ResultCode::NXDOMAIN, packet.header.rescode);
+            assert_eq!(ResultCode::NXDOMAIN, packet.header.res_code);
         }
 
         // Register a negative cache entry with no TTL

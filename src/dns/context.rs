@@ -2,25 +2,71 @@
 
 use std::io::Result;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize,Ordering};
+use std::path::Path;
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
 use dns::resolve::{DnsResolver,RecursiveDnsResolver,ForwardingDnsResolver};
 use dns::client::{DnsClient,DnsNetworkClient};
 use dns::cache::SynchronizedCache;
 use dns::authority::Authority;
+use dns::filter::DnsFilter;
+use dns::utils::current_time_millis;
 
 pub struct ServerStatistics {
-    pub tcp_query_count: AtomicUsize,
-    pub udp_query_count: AtomicUsize
+    start_time: u64,
+    tcp_query_count: u64,
+    udp_query_count: u64,
+    min_request_time: u64,
+    max_request_time: u64,
+    avg_request_time: u64
 }
 
 impl ServerStatistics {
-    pub fn get_tcp_query_count(&self) -> usize {
-        self.tcp_query_count.load(Ordering::Acquire)
+    pub fn new() -> ServerStatistics {
+        ServerStatistics {
+            start_time: current_time_millis(),
+            tcp_query_count: 0u64,
+            udp_query_count: 0u64,
+            min_request_time: 0u64,
+            max_request_time: 0u64,
+            avg_request_time: 0u64,
+        }
     }
 
-    pub fn get_udp_query_count(&self) -> usize {
-        self.udp_query_count.load(Ordering::Acquire)
+    pub fn get_tcp_query_count(&self) -> u64 {
+        self.tcp_query_count
+    }
+
+    pub fn get_udp_query_count(&self) -> u64 {
+        self.udp_query_count
+    }
+
+    pub fn add_request_time(&mut self, request_time: u64, udp: bool) {
+        if request_time > self.max_request_time {
+            self.max_request_time = request_time;
+        }
+        if self.min_request_time == 0 {
+            self.min_request_time = request_time;
+        }
+        if request_time > 0 && request_time < self.min_request_time {
+            self.min_request_time = request_time;
+        }
+        let query_count = self.udp_query_count + self.tcp_query_count;
+
+        self.avg_request_time = (self.avg_request_time * (query_count) + request_time) / (query_count + 1);
+
+        if udp {
+            self.udp_query_count += 1;
+        } else {
+            self.tcp_query_count += 1;
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn print(&self) {
+        println!("Statistics from time: {}\nUDP requests: {}\nTCP requests: {}\nMin time: {}\nMax time: {}\nAvg time: {}\n",
+                self.start_time, self.udp_query_count, self.tcp_query_count, self.min_request_time, self.max_request_time, self.avg_request_time);
     }
 }
 
@@ -36,6 +82,7 @@ pub struct ServerContext {
     pub authority: Authority,
     pub cache: SynchronizedCache,
     pub client: Box<DnsClient + Sync + Send>,
+    pub dns_bind_ip: String,
     pub dns_port: u16,
     pub api_port: u16,
     pub resolve_strategy: ResolveStrategy,
@@ -43,7 +90,8 @@ pub struct ServerContext {
     pub enable_udp: bool,
     pub enable_tcp: bool,
     pub enable_api: bool,
-    pub statistics: ServerStatistics
+    pub filter: DnsFilter,
+    pub statistics: Mutex<ServerStatistics>
 }
 
 impl Default for ServerContext {
@@ -57,7 +105,8 @@ impl ServerContext {
         ServerContext {
             authority: Authority::new(),
             cache: SynchronizedCache::new(),
-            client: Box::new(DnsNetworkClient::new(34255)),
+            client: Box::new(DnsNetworkClient::new(34555)),
+            dns_bind_ip: "0.0.0.0".to_owned(),
             dns_port: 53,
             api_port: 5380,
             resolve_strategy: ResolveStrategy::Recursive,
@@ -65,14 +114,15 @@ impl ServerContext {
             enable_udp: true,
             enable_tcp: true,
             enable_api: true,
-            statistics: ServerStatistics {
-                tcp_query_count: AtomicUsize::new(0),
-                udp_query_count: AtomicUsize::new(0)
-            }
+            filter: DnsFilter::new(),
+            statistics: Mutex::new(ServerStatistics::new())
         }
     }
 
     pub fn initialize(&mut self) -> Result<()> {
+        // Load filter rules
+        self.filter.load_rules(Path::new("filter.txt"));
+
         // Start UDP client thread
         try!(self.client.run());
 
@@ -118,6 +168,7 @@ pub mod tests {
             enable_udp: true,
             enable_tcp: true,
             enable_api: true,
+            filter: DnsFilter::new(),
             statistics: ServerStatistics {
                 tcp_query_count: AtomicUsize::new(0),
                 udp_query_count: AtomicUsize::new(0)

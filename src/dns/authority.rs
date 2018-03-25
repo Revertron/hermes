@@ -228,7 +228,7 @@ impl Authority {
         }
 
         if packet.answers.is_empty() {
-            packet.header.rescode = ResultCode::NXDOMAIN;
+            packet.header.res_code = ResultCode::NXDOMAIN;
 
             packet.authorities.push(DnsRecord::SOA {
                 domain: zone.domain.clone(),

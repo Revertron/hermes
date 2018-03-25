@@ -7,6 +7,8 @@ use std::sync::mpsc::{channel, Sender};
 use std::thread::Builder;
 use std::sync::atomic::Ordering;
 use std::net::SocketAddr;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use std::collections::VecDeque;
 
 use rand::random;
@@ -16,6 +18,9 @@ use dns::protocol::{DnsPacket, QueryType, DnsRecord, ResultCode};
 use dns::buffer::{PacketBuffer, BytePacketBuffer, VectorPacketBuffer, StreamPacketBuffer};
 use dns::context::ServerContext;
 use dns::netutil::{read_packet_length, write_packet_length};
+use dns::protocol::TransientTtl;
+use dns::filter::DnsFilter;
+use dns::utils::current_time_millis;
 
 macro_rules! return_or_report {
     ( $x:expr, $message:expr ) => {
@@ -54,10 +59,7 @@ pub trait DnsServer {
 /// Utility function for resolving domains referenced in for example CNAME or SRV
 /// records. This usually spares the client from having to perform additional
 /// lookups.
-fn resolve_cnames(lookup_list: &[DnsRecord],
-                  results: &mut Vec<DnsPacket>,
-                  resolver: &mut Box<DnsResolver>,
-                  depth: u16)
+fn resolve_cnames(lookup_list: &[DnsRecord], results: &mut Vec<DnsPacket>, resolver: &mut Box<DnsResolver>, depth: u16)
 {
     if depth > 10 {
         return;
@@ -67,10 +69,7 @@ fn resolve_cnames(lookup_list: &[DnsRecord],
         match **rec {
             DnsRecord::CNAME { ref host, .. } |
             DnsRecord::SRV { ref host, .. } => {
-                if let Ok(result2) = resolver.resolve(host,
-                                                      QueryType::A,
-                                                      true) {
-
+                if let Ok(result2) = resolver.resolve(host, QueryType::A, true) {
                     let new_unmatched = result2.get_unresolved_cnames();
                     results.push(result2);
 
@@ -99,10 +98,10 @@ pub fn execute_query(context: Arc<ServerContext>, request: &DnsPacket) -> DnsPac
     packet.header.response = true;
 
     if request.header.recursion_desired && !context.allow_recursive {
-        packet.header.rescode = ResultCode::REFUSED;
+        packet.header.res_code = ResultCode::REFUSED;
     }
     else if request.questions.is_empty() {
-        packet.header.rescode = ResultCode::FORMERR;
+        packet.header.res_code = ResultCode::FORMERR;
     }
     else {
         let mut results = Vec::new();
@@ -110,20 +109,26 @@ pub fn execute_query(context: Arc<ServerContext>, request: &DnsPacket) -> DnsPac
         let question = &request.questions[0];
         packet.questions.push(question.clone());
 
+        if context.filter.contains(&question.name) {
+            println!("Blocking domain {}, record {:?}", question.name, question.qtype);
+            DnsFilter::fill_blocked_response(&mut packet);
+            return packet;
+        }
+
         let mut resolver = context.create_resolver(context.clone());
-        let rescode = match resolver.resolve(&question.name,
+        let res_code = match resolver.resolve(&question.name,
                                              question.qtype,
                                              request.header.recursion_desired) {
 
             Ok(result) => {
-                let rescode = result.header.rescode;
+                let res_code = result.header.res_code;
 
                 let unmatched = result.get_unresolved_cnames();
                 results.push(result);
 
                 resolve_cnames(&unmatched, &mut results, &mut resolver, 0);
 
-                rescode
+                res_code
             },
             Err(err) => {
                 println!("Failed to resolve {:?} {}: {:?}", question.qtype, question.name, err);
@@ -131,7 +136,7 @@ pub fn execute_query(context: Arc<ServerContext>, request: &DnsPacket) -> DnsPac
             }
         };
 
-        packet.header.rescode = rescode;
+        packet.header.res_code = res_code;
 
         for result in results {
             for rec in result.answers {
@@ -181,7 +186,7 @@ impl DnsServer for DnsUdpServer {
     fn run_server(self) -> Result<()> {
 
         // Bind the socket
-        let socket = try!(UdpSocket::bind(("0.0.0.0", self.context.dns_port)));
+        let socket = UdpSocket::bind((self.context.dns_bind_ip.as_ref(), self.context.dns_port))?;
 
         // Spawn threads for handling requests
         for thread_id in 0..self.thread_count {
@@ -198,15 +203,13 @@ impl DnsServer for DnsUdpServer {
             let request_queue = self.request_queue.clone();
 
             let name = "DnsUdpServer-request-".to_string() + &thread_id.to_string();
-            let _ = try!(Builder::new().name(name).spawn(move || {
+            let _ = Builder::new().name(name).spawn(move || {
                 loop {
-
                     // Acquire lock, and wait on the condition until data is
                     // available. Then proceed with popping an entry of the queue.
                     let (src, request) = match request_queue.lock().ok()
                         .and_then(|x| request_cond.wait(x).ok())
                         .and_then(|mut x| x.pop_front()) {
-
                         Some(x) => x,
                         None => {
                             println!("Not expected to happen!");
@@ -234,15 +237,18 @@ impl DnsServer for DnsUdpServer {
                     let len = res_buffer.pos();
                     let data = return_or_report!(res_buffer.get_range(0, len), "Failed to get buffer data");
                     ignore_or_report!(socket_clone.send_to(data, src), "Failed to send response packet");
+                    // Incrementing and printing statistics
+                    let request_time = current_time_millis() - request.get_start_time();
+                    let mut lock = context.statistics.lock().unwrap();
+                    lock.add_request_time(request_time, true);
+                    lock.print();
                 }
-            }));
+            })?;
         }
 
         // Start servicing requests
-        let _ = try!(Builder::new().name("DnsUdpServer-incoming".into()).spawn(move || {
+        let _ = Builder::new().name("DnsUdpServer-incoming".into()).spawn(move || {
             loop {
-                let _ = self.context.statistics.udp_query_count.fetch_add(1, Ordering::Release);
-
                 // Read a query packet
                 let mut req_buffer = BytePacketBuffer::new();
                 let (_, src) = match socket.recv_from(&mut req_buffer.buf) {
@@ -253,14 +259,18 @@ impl DnsServer for DnsUdpServer {
                     }
                 };
 
+                let start_time = current_time_millis();
+
                 // Parse it
-                let request = match DnsPacket::from_buffer(&mut req_buffer) {
+                let mut request = match DnsPacket::from_buffer(&mut req_buffer) {
                     Ok(x) => x,
                     Err(e) => {
                         println!("Failed to parse UDP query packet: {:?}", e);
                         continue;
                     }
                 };
+
+                request.set_start_time(start_time);
 
                 // Acquire lock, add request to queue, and notify waiting threads
                 // using the condition.
@@ -274,7 +284,7 @@ impl DnsServer for DnsUdpServer {
                     }
                 }
             }
-        }));
+        })?;
 
         Ok(())
     }
@@ -299,34 +309,35 @@ impl DnsTcpServer {
 
 impl DnsServer for DnsTcpServer {
     fn run_server(mut self) -> Result<()> {
-        let socket = try!(TcpListener::bind(("0.0.0.0", self.context.dns_port)));
+        let socket = TcpListener::bind((self.context.dns_bind_ip.as_ref(), self.context.dns_port))?;
 
         // Spawn threads for handling requests, and create the channels
         for thread_id in 0..self.thread_count {
             let (tx, rx) = channel();
             self.senders.push(tx);
 
-            let context = self.context.clone();
+            let mut context = self.context.clone();
 
             let name = "DnsTcpServer-request-".to_string() + &thread_id.to_string();
-            let _ = try!(Builder::new().name(name).spawn(move || {
+            let _ = Builder::new().name(name).spawn(move || {
                 loop {
                     let mut stream = match rx.recv() {
                         Ok(x) => x,
                         Err(_) => continue
                     };
 
-                    let _ = context.statistics.tcp_query_count.fetch_add(1, Ordering::Release);
-
                     // When DNS packets are sent over TCP, they're prefixed with a two byte
                     // length. We don't really need to know the length in advance, so we
                     // just move past it and continue reading as usual
                     ignore_or_report!(read_packet_length(&mut stream), "Failed to read query packet length");
 
-                    let request = {
+                    let mut request = {
                         let mut stream_buffer = StreamPacketBuffer::new(&mut stream);
                         return_or_report!(DnsPacket::from_buffer(&mut stream_buffer), "Failed to read query packet")
                     };
+
+                    let start_time = current_time_millis();
+                    request.set_start_time(start_time);
 
                     let mut res_buffer = VectorPacketBuffer::new();
 
@@ -342,13 +353,17 @@ impl DnsServer for DnsTcpServer {
                     let data = return_or_report!(res_buffer.get_range(0, len), "Failed to get packet data");
 
                     ignore_or_report!(stream.write(data), "Failed to write response packet");
-
                     ignore_or_report!(stream.shutdown(Shutdown::Both), "Failed to shutdown socket");
+                    // Incrementing and printing statistics
+                    let request_time = current_time_millis() - request.get_start_time();
+                    let mut lock = context.statistics.lock().unwrap();
+                    lock.add_request_time(request_time, false);
+                    lock.print();
                 }
-            }));
+            })?;
         }
 
-        let _ = try!(Builder::new().name("DnsTcpServer-incoming".into()).spawn(move || {
+        let _ = Builder::new().name("DnsTcpServer-incoming".into()).spawn(move || {
             for wrap_stream in socket.incoming() {
                 let stream = match wrap_stream {
                     Ok(stream) => stream,
@@ -367,7 +382,7 @@ impl DnsServer for DnsTcpServer {
                     }
                 }
             }
-        }));
+        })?;
 
         Ok(())
     }
@@ -434,7 +449,7 @@ mod tests {
                         ttl: TransientTtl(3600)
                     });
                 } else {
-                    packet.header.rescode = ResultCode::NXDOMAIN;
+                    packet.header.res_code = ResultCode::NXDOMAIN;
                 }
 
                 Ok(packet)
@@ -510,7 +525,7 @@ mod tests {
         {
             let res = execute_query(context.clone(),
                                     &build_query("yahoo.com", QueryType::A));
-            assert_eq!(ResultCode::NXDOMAIN, res.header.rescode);
+            assert_eq!(ResultCode::NXDOMAIN, res.header.res_code);
             assert_eq!(0, res.answers.len());
         };
 
@@ -527,7 +542,7 @@ mod tests {
         {
             let res = execute_query(context.clone(),
                                     &build_query("yahoo.com", QueryType::A));
-            assert_eq!(ResultCode::REFUSED, res.header.rescode);
+            assert_eq!(ResultCode::REFUSED, res.header.res_code);
             assert_eq!(0, res.answers.len());
         };
 
@@ -536,7 +551,7 @@ mod tests {
         {
             let query_packet = DnsPacket::new();
             let res = execute_query(context.clone(), &query_packet);
-            assert_eq!(ResultCode::FORMERR, res.header.rescode);
+            assert_eq!(ResultCode::FORMERR, res.header.res_code);
             assert_eq!(0, res.answers.len());
         };
 
@@ -560,7 +575,7 @@ mod tests {
         {
             let res = execute_query(context2.clone(),
                                     &build_query("yahoo.com", QueryType::A));
-            assert_eq!(ResultCode::SERVFAIL, res.header.rescode);
+            assert_eq!(ResultCode::SERVFAIL, res.header.res_code);
             assert_eq!(0, res.answers.len());
         };
 

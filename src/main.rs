@@ -1,15 +1,15 @@
 //! hermes documentation
 
-#![feature(plugin)]
-#![plugin(clippy)]
+#![cfg_attr(feature="clippy", feature(plugin))]
+#![cfg_attr(feature="clippy", plugin(clippy))]
 
 pub mod dns;
-pub mod web;
+//pub mod web;
 
 extern crate rand;
 extern crate chrono;
-extern crate tiny_http;
-extern crate rustc_serialize;
+//extern crate tiny_http;
+//extern crate rustc_serialize;
 extern crate ascii;
 extern crate handlebars;
 extern crate regex;
@@ -24,10 +24,10 @@ use getopts::Options;
 use dns::server::{DnsServer,DnsUdpServer,DnsTcpServer};
 use dns::protocol::{DnsRecord,TransientTtl};
 use dns::context::{ServerContext, ResolveStrategy};
-use web::server::WebServer;
-use web::cache::CacheAction;
-use web::authority::{AuthorityAction,ZoneAction};
-use web::index::IndexAction;
+//use web::server::WebServer;
+//use web::cache::CacheAction;
+//use web::authority::{AuthorityAction,ZoneAction};
+//use web::index::IndexAction;
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} [options]", program);
@@ -113,8 +113,12 @@ fn main() {
         }
     }
 
+    loop {
+        use std::thread;
+        thread::sleep(std::time::Duration::new(0, 100));
+    }
     // Start web server
-    if context.enable_api {
+    /*if context.enable_api {
         let mut webserver = WebServer::new(context.clone());
 
         webserver.register_action(Box::new(CacheAction::new(context.clone())));
@@ -123,7 +127,7 @@ fn main() {
         webserver.register_action(Box::new(IndexAction::new(context.clone())));
 
         webserver.run_webserver();
-    }
+    }*/
 }
 
 fn get_rootservers() -> Vec<DnsRecord>
