@@ -58,7 +58,7 @@ pub struct DomainEntry {
 impl DomainEntry {
     pub fn new(domain: String) -> DomainEntry {
         DomainEntry {
-            domain: domain,
+            domain,
             record_types: HashMap::new(),
             hits: 0,
             updates: 0
@@ -69,7 +69,7 @@ impl DomainEntry {
         self.updates += 1;
 
         let new_set = RecordSet::NoRecords {
-            qtype: qtype,
+            qtype,
             ttl: ttl,
             timestamp: Local::now()
         };
@@ -146,9 +146,7 @@ impl DomainEntry {
         }
     }
 
-    pub fn fill_queryresult(&self,
-                            qtype: QueryType,
-                            result_vec: &mut Vec<DnsRecord>) {
+    pub fn fill_query_result(&self, qtype: QueryType, result_vec: &mut Vec<DnsRecord>) {
 
         let now = Local::now();
 
@@ -185,9 +183,7 @@ impl Cache {
         }
     }
 
-    fn get_cache_state(&mut self,
-                       qname: &str,
-                       qtype: QueryType) -> CacheState {
+    fn get_cache_state(&mut self, qname: &str, qtype: QueryType) -> CacheState {
 
         match self.domain_entries.get(qname) {
             Some(x) => x.get_cache_state(qtype),
@@ -195,31 +191,23 @@ impl Cache {
         }
     }
 
-    fn fill_queryresult(&mut self,
-                        qname: &str,
-                        qtype: QueryType,
-                        result_vec: &mut Vec<DnsRecord>,
-                        increment_stats: bool) {
-
+    fn fill_query_result(&mut self, qname: &str, qtype: QueryType, result_vec: &mut Vec<DnsRecord>, increment_stats: bool) {
         if let Some(domain_entry) = self.domain_entries.get_mut(qname).and_then(Arc::get_mut) {
-
             if increment_stats {
                 domain_entry.hits += 1
             }
 
-            domain_entry.fill_queryresult(qtype, result_vec);
+            domain_entry.fill_query_result(qtype, result_vec);
         }
     }
 
-    pub fn lookup(&mut self,
-                  qname: &str,
-                  qtype: QueryType) -> Option<DnsPacket> {
+    pub fn lookup(&mut self, qname: &str, qtype: QueryType) -> Option<DnsPacket> {
 
         match self.get_cache_state(qname, qtype) {
             CacheState::PositiveCache => {
                 let mut qr = DnsPacket::new();
-                self.fill_queryresult(qname, qtype, &mut qr.answers, true);
-                self.fill_queryresult(qname, QueryType::NS, &mut qr.authorities, false);
+                self.fill_query_result(qname, qtype, &mut qr.answers, true);
+                self.fill_query_result(qname, QueryType::NS, &mut qr.authorities, false);
 
                 Some(qr)
             },
@@ -241,8 +229,7 @@ impl Cache {
                 None => continue
             };
 
-            if let Some(ref mut rs) = self.domain_entries.get_mut(&domain)
-                .and_then(Arc::get_mut) {
+            if let Some(ref mut rs) = self.domain_entries.get_mut(&domain).and_then(Arc::get_mut) {
 
                 rs.store_record(rec);
                 continue;
@@ -295,10 +282,7 @@ impl SynchronizedCache {
         Ok(list)
     }
 
-    pub fn lookup(&self,
-                  qname: &str,
-                  qtype: QueryType) -> Option<DnsPacket> {
-
+    pub fn lookup(&self, qname: &str, qtype: QueryType) -> Option<DnsPacket> {
         let mut cache = match self.cache.write() {
             Ok(x) => x,
             Err(_) => return None
@@ -318,11 +302,7 @@ impl SynchronizedCache {
         Ok(())
     }
 
-    pub fn store_nxdomain(&self,
-                          qname: &str,
-                          qtype: QueryType,
-                          ttl: u32) -> Result<()> {
-
+    pub fn store_nxdomain(&self, qname: &str, qtype: QueryType, ttl: u32) -> Result<()> {
         let mut cache = match self.cache.write() {
             Ok(x) => x,
             Err(_) => return Err(Error::new(ErrorKind::Other, "Failed to acquire lock"))
