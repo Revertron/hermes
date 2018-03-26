@@ -147,7 +147,6 @@ impl DomainEntry {
     }
 
     pub fn fill_query_result(&self, qtype: QueryType, result_vec: &mut Vec<DnsRecord>) {
-
         let now = Local::now();
 
         let current_set = match self.record_types.get(&qtype) {
@@ -222,7 +221,6 @@ impl Cache {
     }
 
     pub fn store(&mut self, records: &[DnsRecord]) {
-
         for rec in records {
             let domain = match rec.get_domain() {
                 Some(x) => x,
