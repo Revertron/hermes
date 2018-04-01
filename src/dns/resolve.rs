@@ -140,6 +140,7 @@ impl DnsResolver for RecursiveDnsResolver {
         };
 
         let mut try_number = 1;
+        let max_tries = 5;
         // Start querying name servers
         loop {
             println!("{}: attempt {} to lookup {:?} {} with ns {}", current_thread_name(), try_number, qtype, qname, ns);
@@ -175,6 +176,11 @@ impl DnsResolver for RecursiveDnsResolver {
                 let _ = self.context.cache.store(&response.resources);
                 try_number += 1;
 
+                if try_number > max_tries {
+                    println!("Can not resolve {:?} {}", qtype, qname);
+                    return Err(Error::new(ErrorKind::NotFound, format!("Can not resolve {:?} {}", qtype, qname)))
+                }
+
                 continue;
             }
 
@@ -196,7 +202,7 @@ impl DnsResolver for RecursiveDnsResolver {
 
             try_number += 1;
 
-            if try_number > 5 {
+            if try_number > max_tries {
                 println!("Can not resolve {:?} {}", qtype, qname);
                 return Err(Error::new(ErrorKind::NotFound, format!("Can not resolve {:?} {}", qtype, qname)))
             }
