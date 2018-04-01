@@ -96,7 +96,7 @@ fn main() {
             match opt_matches.opt_str("p").and_then(|x| x.parse::<u16>().ok()) {
                 Some(port) => {
                     ctx.dns_port = port;
-                    println!("Using port {} for DNS");
+                    println!("Using port {} for DNS", port);
                 },
                 None => {
                     println!("Port number must be positive number in 1..65535 range");
