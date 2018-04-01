@@ -57,8 +57,7 @@ pub trait DnsServer {
 }
 
 /// Utility function for resolving domains referenced in for example CNAME or SRV
-/// records. This usually spares the client from having to perform additional
-/// lookups.
+/// records. This usually spares the client from having to perform additional lookups.
 fn resolve_cnames(lookup_list: &[DnsRecord], results: &mut Vec<DnsPacket>, resolver: &mut Box<DnsResolver>, depth: u16)
 {
     if depth > 10 {
@@ -169,10 +168,10 @@ pub struct DnsUdpServer {
 impl DnsUdpServer {
     pub fn new(context: Arc<ServerContext>, thread_count: usize) -> DnsUdpServer {
         DnsUdpServer {
-            context: context,
+            context,
             request_queue: Arc::new(Mutex::new(VecDeque::new())),
             request_cond: Arc::new(Condvar::new()),
-            thread_count: thread_count
+            thread_count
         }
     }
 }
@@ -226,8 +225,7 @@ impl DnsServer for DnsUdpServer {
                         }
                     }
 
-                    // Create a response buffer, and ask the context for an appropriate
-                    // resolver
+                    // Create a response buffer, and ask the context for an appropriate resolver
                     let mut res_buffer = VectorPacketBuffer::new();
 
                     let mut packet = execute_query(context.clone(), &request);
@@ -300,9 +298,9 @@ pub struct DnsTcpServer {
 impl DnsTcpServer {
     pub fn new(context: Arc<ServerContext>, thread_count: usize) -> DnsTcpServer {
         DnsTcpServer {
-            context: context,
+            context,
             senders: Vec::new(),
-            thread_count: thread_count
+            thread_count
         }
     }
 }
