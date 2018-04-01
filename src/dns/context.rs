@@ -87,8 +87,8 @@ pub struct ServerContext {
     pub api_port: u16,
     pub resolve_strategy: ResolveStrategy,
     pub allow_recursive: bool,
-    pub threads_udp: u32,
-    pub threads_tcp: u32,
+    pub threads_udp: usize,
+    pub threads_tcp: usize,
     pub enable_api: bool,
     pub filter: DnsFilter,
     pub statistics: Mutex<ServerStatistics>
@@ -161,6 +161,7 @@ pub mod tests {
             authority: Authority::new(),
             cache: SynchronizedCache::new(),
             client: Box::new(DnsStubClient::new(callback)),
+            dns_bind_ip: "0.0.0.0".to_owned(),
             dns_port: 53,
             api_port: 5380,
             resolve_strategy: ResolveStrategy::Recursive,
@@ -169,7 +170,7 @@ pub mod tests {
             threads_tcp: 32,
             enable_api: true,
             filter: DnsFilter::new(),
-            statistics: Mutex::new(ServerStatistics::new())
+            statistics: Mutex::new(ServerStatistics::new()),
         })
 
     }

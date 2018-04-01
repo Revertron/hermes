@@ -79,7 +79,7 @@ fn main() {
         }
 
         if opt_matches.opt_present("t") {
-            match opt_matches.opt_str("t").and_then(|x| x.parse::<u32>().ok()) {
+            match opt_matches.opt_str("t").and_then(|x| x.parse::<usize>().ok()) {
                 Some(threads) => {
                     ctx.threads_udp = threads;
                     ctx.threads_tcp = threads;
@@ -132,7 +132,7 @@ fn main() {
         }
     }
 
-    if context.threads_tcp {
+    if context.threads_tcp > 0 {
         let tcp_server = DnsTcpServer::new(context.clone(), context.threads_tcp);
         if let Err(e) = tcp_server.run_server() {
             println!("Failed to bind TCP listener: {:?}", e);
