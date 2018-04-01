@@ -138,6 +138,7 @@ impl DnsResolver for RecursiveDnsResolver {
             None => return Err(Error::new(ErrorKind::NotFound, "No DNS server found"))
         };
 
+        let mut try_number = 1;
         // Start querying name servers
         loop {
             println!("attempting lookup of {:?} {} with ns {}", qtype, qname, ns);
@@ -190,6 +191,13 @@ impl DnsResolver for RecursiveDnsResolver {
                 ns = new_ns.clone();
             } else {
                 return Ok(response.clone())
+            }
+
+            try_number += 1;
+
+            if try_number > 5 {
+                println!("Can not resolve {:?} {}", qtype, qname);
+                return Err(Error::new(ErrorKind::NotFound, format!("Can not resolve {:?} {}", qtype, qname)))
             }
         }
     }
