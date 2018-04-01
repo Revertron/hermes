@@ -142,7 +142,7 @@ impl DnsResolver for RecursiveDnsResolver {
         let mut try_number = 1;
         // Start querying name servers
         loop {
-            println!("{}: attempting lookup of {:?} {} with ns {}", current_thread_name(), qtype, qname, ns);
+            println!("{}: attempt {} to lookup {:?} {} with ns {}", current_thread_name(), try_number, qtype, qname, ns);
 
 
             let ns_copy = ns.clone();
@@ -151,9 +151,7 @@ impl DnsResolver for RecursiveDnsResolver {
             let response = self.context.client.send_query(qname, qtype.clone(), server, false)?;
 
             // If we've got an actual answer, we're done!
-            if !response.answers.is_empty() &&
-               response.header.res_code == ResultCode::NOERROR {
-
+            if !response.answers.is_empty() && response.header.res_code == ResultCode::NOERROR {
                 let _ = self.context.cache.store(&response.answers);
                 let _ = self.context.cache.store(&response.authorities);
                 let _ = self.context.cache.store(&response.resources);
@@ -175,6 +173,7 @@ impl DnsResolver for RecursiveDnsResolver {
                 let _ = self.context.cache.store(&response.answers);
                 let _ = self.context.cache.store(&response.authorities);
                 let _ = self.context.cache.store(&response.resources);
+                try_number += 1;
 
                 continue;
             }
