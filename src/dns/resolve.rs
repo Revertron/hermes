@@ -9,6 +9,7 @@ use std::sync::Arc;
 use dns::protocol::{QueryType, DnsPacket, ResultCode};
 use dns::client::DnsClient;
 use dns::context::ServerContext;
+use dns::utils::current_thread_name;
 
 pub trait DnsResolver {
 
@@ -141,7 +142,8 @@ impl DnsResolver for RecursiveDnsResolver {
         let mut try_number = 1;
         // Start querying name servers
         loop {
-            println!("attempting lookup of {:?} {} with ns {}", qtype, qname, ns);
+            println!("{}: attempting lookup of {:?} {} with ns {}", current_thread_name(), qtype, qname, ns);
+
 
             let ns_copy = ns.clone();
 
