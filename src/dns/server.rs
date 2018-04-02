@@ -251,7 +251,7 @@ impl DnsServer for DnsUdpServer {
                 if queue_len > 1 {
                     println!("Queue size is {}", queue_len);
                 }
-                while queue_len > (threads_count / 2) {
+                while queue_len > 0 {
                     queue_len = match self.request_queue.lock() {
                         Ok(queue) => queue.len(),
                         Err(_e) => 0
