@@ -8,6 +8,7 @@ use std::sync::Arc;
 use dns::protocol::{QueryType, DnsPacket, ResultCode};
 use dns::context::ServerContext;
 use dns::utils::current_thread_name;
+use std::collections::HashSet;
 
 pub trait DnsResolver {
 
@@ -140,6 +141,7 @@ impl DnsResolver for RecursiveDnsResolver {
             None => return Err(Error::new(ErrorKind::NotFound, "No DNS server found"))
         };
 
+        let mut zones = HashSet::new();
         // Start querying name servers
         loop {
             println!("{}: attempting to lookup {:?} {} with ns {}", current_thread_name(), qtype, qname, ns);
@@ -163,6 +165,10 @@ impl DnsResolver for RecursiveDnsResolver {
                 return Ok(response.clone());
             }
 
+            if zones.contains(&response.get_ns_zone()) {
+                return Err(Error::new(ErrorKind::NotFound, format!("Can not resolve {:?} {}", qtype, qname)));
+            }
+
             // Otherwise, try to find a new nameserver based on NS and a
             // corresponding A record in the additional section
             if let Some(new_ns) = response.get_resolved_ns(qname) {
@@ -171,7 +177,10 @@ impl DnsResolver for RecursiveDnsResolver {
                 let _ = self.context.cache.store(&response.answers);
                 let _ = self.context.cache.store(&response.authorities);
                 let _ = self.context.cache.store(&response.resources);
-
+                let zone = response.get_ns_zone();
+                if !zone.is_empty() {
+                    zones.insert(zone);
+                }
                 continue;
             }
 
@@ -185,6 +194,11 @@ impl DnsResolver for RecursiveDnsResolver {
 
             // Recursively resolve the NS
             let recursive_response = self.resolve(&new_ns_name, QueryType::A, true)?;
+
+            let zone = recursive_response.get_ns_zone();
+            if !zone.is_empty() {
+                zones.insert(zone);
+            }
 
             // Pick a random IP and restart
             if let Some(new_ns) = recursive_response.get_random_a() {

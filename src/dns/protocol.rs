@@ -896,6 +896,17 @@ impl DnsPacket {
         None
     }
 
+    pub fn get_ns_zone(&self) -> String {
+        for auth in &self.authorities {
+            if let DnsRecord::NS { ref domain, .. } = *auth {
+                if !domain.is_empty() {
+                    return domain.clone();
+                }
+            }
+        }
+        String::from("")
+    }
+
     pub fn write<T: PacketBuffer>(&mut self, buffer: &mut T, max_size: usize) -> Result<()> {
         let mut test_buffer = VectorPacketBuffer::new();
 
