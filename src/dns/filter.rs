@@ -1,5 +1,4 @@
 use std::fs::File;
-use std::io::Read;
 use std::io::BufReader;
 use std::io::BufRead;
 use std::path::Path;
@@ -41,7 +40,7 @@ impl DnsFilter {
                 }
             },
             Err(text) => {
-                println!("Error opening filter file: {:?}", path);
+                println!("Error opening filter file: {:?} ({})", path, text);
             }
         }
     }

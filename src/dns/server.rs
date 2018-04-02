@@ -5,10 +5,7 @@ use std::net::{UdpSocket, TcpListener, TcpStream, Shutdown};
 use std::sync::{Arc,Mutex,Condvar};
 use std::sync::mpsc::{channel, Sender};
 use std::thread::{Builder,sleep};
-use std::sync::atomic::Ordering;
 use std::net::SocketAddr;
-use std::net::Ipv4Addr;
-use std::net::Ipv6Addr;
 use std::collections::VecDeque;
 
 use rand::random;
@@ -18,7 +15,6 @@ use dns::protocol::{DnsPacket, QueryType, DnsRecord, ResultCode};
 use dns::buffer::{PacketBuffer, BytePacketBuffer, VectorPacketBuffer, StreamPacketBuffer};
 use dns::context::ServerContext;
 use dns::netutil::{read_packet_length, write_packet_length};
-use dns::protocol::TransientTtl;
 use dns::filter::DnsFilter;
 use dns::utils::current_time_millis;
 use std::time::Duration;
@@ -244,6 +240,7 @@ impl DnsServer for DnsUdpServer {
             })?;
         }
 
+        let threads_count = self.context.clone().threads_udp;
         // Start servicing requests
         let _ = Builder::new().name("DnsUdpServer-incoming".into()).spawn(move || {
             loop {
@@ -285,9 +282,15 @@ impl DnsServer for DnsUdpServer {
 
                 if queue_len > 1 {
                     println!("Waking up {} threads", queue_len);
-                    for _x in 1..queue_len {
+
+                    while queue_len > threads_count {
+                        queue_len = match self.request_queue.lock() {
+                            Ok(queue) => queue.len(),
+                            Err(_e) => 0
+                        };
+
                         self.request_cond.notify_one();
-                        sleep(Duration::from_millis(100));
+                        sleep(Duration::from_millis(10));
                     }
                 }
             }

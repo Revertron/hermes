@@ -1,10 +1,10 @@
 //! a threadsafe cache for DNS information
 
-use std::collections::{HashSet,HashMap,BTreeMap};
-use std::hash::{Hash,Hasher};
+use std::collections::{HashSet, HashMap, BTreeMap};
+use std::hash::{Hash, Hasher};
 use std::sync::{Arc, RwLock};
 use std::clone::Clone;
-use std::io::{Write,Result,Error,ErrorKind};
+use std::io::{Result, Error, ErrorKind};
 
 use chrono::*;
 

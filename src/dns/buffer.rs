@@ -17,36 +17,35 @@ pub trait PacketBuffer {
     fn save_label(&mut self, label: &str, pos: usize);
 
     fn write_u8(&mut self, val: u8) -> Result<()> {
-        try!(self.write(val));
+        self.write(val)?;
 
         Ok(())
     }
 
     fn set_u16(&mut self, pos: usize, val: u16) -> Result<()> {
-        try!(self.set(pos,(val >> 8) as u8));
-        try!(self.set(pos+1,(val & 0xFF) as u8));
+        self.set(pos, (val >> 8) as u8)?;
+        self.set(pos + 1, (val & 0xFF) as u8)?;
 
         Ok(())
     }
 
     fn write_u16(&mut self, val: u16) -> Result<()> {
-        try!(self.write((val >> 8) as u8));
-        try!(self.write((val & 0xFF) as u8));
+        self.write((val >> 8) as u8)?;
+        self.write((val & 0xFF) as u8)?;
 
         Ok(())
     }
 
     fn write_u32(&mut self, val: u32) -> Result<()> {
-        try!(self.write(((val >> 24) & 0xFF) as u8));
-        try!(self.write(((val >> 16) & 0xFF) as u8));
-        try!(self.write(((val >> 8) & 0xFF) as u8));
-        try!(self.write(((val >> 0) & 0xFF) as u8));
+        self.write(((val >> 24) & 0xFF) as u8)?;
+        self.write(((val >> 16) & 0xFF) as u8)?;
+        self.write(((val >> 8) & 0xFF) as u8)?;
+        self.write(((val >> 0) & 0xFF) as u8)?;
 
         Ok(())
     }
 
     fn write_qname(&mut self, qname: &str) -> Result<()> {
-
         let split_str = qname.split('.').collect::<Vec<&str>>();
 
         let mut jump_performed = false;
@@ -55,7 +54,7 @@ pub trait PacketBuffer {
             if let Some(prev_pos) = self.find_label(&search_lbl) {
 
                 let jump_inst = (prev_pos as u16) | 0xC000;
-                try!(self.write_u16(jump_inst));
+                self.write_u16(jump_inst)?;
                 jump_performed = true;
 
                 break;
@@ -65,46 +64,41 @@ pub trait PacketBuffer {
             self.save_label(&search_lbl, pos);
 
             let len = label.len();
-            try!(self.write_u8(len as u8));
+            self.write_u8(len as u8)?;
             for b in label.as_bytes() {
-                try!(self.write_u8(*b));
+                self.write_u8(*b)?;
             }
         }
 
         if !jump_performed {
-            try!(self.write_u8(0));
+            self.write_u8(0)?;
         }
 
         Ok(())
     }
 
-    fn read_u16(&mut self) -> Result<u16>
-    {
-        let res = ((try!(self.read()) as u16) << 8) |
-                  (try!(self.read()) as u16);
+    fn read_u16(&mut self) -> Result<u16> {
+        let res = ((self.read()? as u16) << 8) | (self.read()? as u16);
 
         Ok(res)
     }
 
-    #[allow(identity_op)]
-    fn read_u32(&mut self) -> Result<u32>
-    {
-        let res = ((try!(self.read()) as u32) << 24) |
-                  ((try!(self.read()) as u32) << 16) |
-                  ((try!(self.read()) as u32) << 8) |
-                  ((try!(self.read()) as u32) << 0);
+    fn read_u32(&mut self) -> Result<u32> {
+        let res = ((self.read()? as u32) << 24) |
+            ((self.read()? as u32) << 16) |
+            ((self.read()? as u32) << 8) |
+            ((self.read()? as u32) << 0);
 
         Ok(res)
     }
 
-    fn read_qname(&mut self, outstr: &mut String) -> Result<()>
-    {
+    fn read_qname(&mut self, outstr: &mut String) -> Result<()> {
         let mut pos = self.pos();
         let mut jumped = false;
 
         let mut delim = "";
         loop {
-            let len = try!(self.get(pos));
+            let len = self.get(pos)?;
 
             // A two byte sequence, where the two highest bits of the first byte is
             // set, represents a offset relative to the start of the buffer. We
@@ -115,10 +109,10 @@ pub trait PacketBuffer {
                 // When a jump is performed, we only modify the shared buffer
                 // position once, and avoid making the change later on.
                 if !jumped {
-                    try!(self.seek(pos+2));
+                    self.seek(pos + 2)?;
                 }
 
-                let b2 = try!(self.get(pos+1)) as u16;
+                let b2 = self.get(pos + 1)? as u16;
                 let offset = (((len as u16) ^ 0xC0) << 8) | b2;
                 pos = offset as usize;
                 jumped = true;
@@ -134,7 +128,7 @@ pub trait PacketBuffer {
 
             outstr.push_str(delim);
 
-            let str_buffer = try!(self.get_range(pos, len as usize));
+            let str_buffer = self.get_range(pos, len as usize)?;
             outstr.push_str(&String::from_utf8_lossy(str_buffer).to_lowercase());
 
             delim = ".";
@@ -143,7 +137,7 @@ pub trait PacketBuffer {
         }
 
         if !jumped {
-            try!(self.seek(pos));
+            self.seek(pos)?;
         }
 
         Ok(())
@@ -169,14 +163,6 @@ impl VectorPacketBuffer {
 }
 
 impl PacketBuffer for VectorPacketBuffer {
-    fn find_label(&self, label: &str) -> Option<usize> {
-        self.label_lookup.get(label).cloned()
-    }
-
-    fn save_label(&mut self, label: &str, pos: usize) {
-        self.label_lookup.insert(label.to_string(), pos);
-    }
-
     fn read(&mut self) -> Result<u8> {
         let res = self.buffer[self.pos];
         self.pos += 1;
@@ -220,6 +206,14 @@ impl PacketBuffer for VectorPacketBuffer {
 
         Ok(())
     }
+
+    fn find_label(&self, label: &str) -> Option<usize> {
+        self.label_lookup.get(label).cloned()
+    }
+
+    fn save_label(&mut self, label: &str, pos: usize) {
+        self.label_lookup.insert(label.to_string(), pos);
+    }
 }
 
 pub struct StreamPacketBuffer<'a, T> where T: Read + 'a {
@@ -239,18 +233,10 @@ impl<'a, T> StreamPacketBuffer<'a, T> where T: Read + 'a {
 }
 
 impl<'a, T> PacketBuffer for StreamPacketBuffer<'a, T> where T: Read + 'a {
-    fn find_label(&self, _: &str) -> Option<usize> {
-        None
-    }
-
-    fn save_label(&mut self, _: &str, _: usize) {
-        unimplemented!();
-    }
-
     fn read(&mut self) -> Result<u8> {
         while self.pos >= self.buffer.len() {
             let mut local_buffer = [0; 1];
-            try!(self.stream.read(&mut local_buffer));
+            self.stream.read(&mut local_buffer)?;
             self.buffer.push(local_buffer[0]);
         }
 
@@ -263,7 +249,7 @@ impl<'a, T> PacketBuffer for StreamPacketBuffer<'a, T> where T: Read + 'a {
     fn get(&mut self, pos: usize) -> Result<u8> {
         while pos >= self.buffer.len() {
             let mut local_buffer = [0; 1];
-            try!(self.stream.read(&mut local_buffer));
+            self.stream.read(&mut local_buffer)?;
             self.buffer.push(local_buffer[0]);
         }
 
@@ -273,7 +259,7 @@ impl<'a, T> PacketBuffer for StreamPacketBuffer<'a, T> where T: Read + 'a {
     fn get_range(&mut self, start: usize, len: usize) -> Result<&[u8]> {
         while start+len > self.buffer.len() {
             let mut local_buffer = [0; 1];
-            try!(self.stream.read(&mut local_buffer));
+            self.stream.read(&mut local_buffer)?;
             self.buffer.push(local_buffer[0]);
         }
 
@@ -301,6 +287,14 @@ impl<'a, T> PacketBuffer for StreamPacketBuffer<'a, T> where T: Read + 'a {
         self.pos += steps;
         Ok(())
     }
+
+    fn find_label(&self, _: &str) -> Option<usize> {
+        None
+    }
+
+    fn save_label(&mut self, _: &str, _: usize) {
+        unimplemented!();
+    }
 }
 
 pub struct BytePacketBuffer {
@@ -324,13 +318,6 @@ impl Default for BytePacketBuffer {
 }
 
 impl PacketBuffer for BytePacketBuffer {
-    fn find_label(&self, _: &str) -> Option<usize> {
-        None
-    }
-
-    fn save_label(&mut self, _: &str, _: usize) {
-    }
-
     fn read(&mut self) -> Result<u8> {
         if self.pos >= 512 {
             return Err(Error::new(ErrorKind::InvalidInput, "End of buffer"));
@@ -384,6 +371,13 @@ impl PacketBuffer for BytePacketBuffer {
         self.pos += steps;
 
         Ok(())
+    }
+
+    fn find_label(&self, _: &str) -> Option<usize> {
+        None
+    }
+
+    fn save_label(&mut self, _: &str, _: usize) {
     }
 }
 

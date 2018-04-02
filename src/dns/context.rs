@@ -4,7 +4,6 @@ use std::io::Result;
 use std::sync::Arc;
 use std::path::Path;
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use dns::resolve::{DnsResolver,RecursiveDnsResolver,ForwardingDnsResolver};
 use dns::client::{DnsClient,DnsNetworkClient};

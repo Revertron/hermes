@@ -1,5 +1,4 @@
-//! resolver implementations implementing different strategies for answering
-//! incoming queries
+//! resolver implementations implementing different strategies for answering incoming queries
 
 use std::io::Result;
 use std::vec::Vec;
@@ -7,7 +6,6 @@ use std::io::{Error, ErrorKind};
 use std::sync::Arc;
 
 use dns::protocol::{QueryType, DnsPacket, ResultCode};
-use dns::client::DnsClient;
 use dns::context::ServerContext;
 use dns::utils::current_thread_name;
 
