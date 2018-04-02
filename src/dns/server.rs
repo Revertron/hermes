@@ -258,7 +258,7 @@ impl DnsServer for DnsUdpServer {
                     println!("Queue size is {}", queue_len);
                     self.request_cond.notify_one();
                     if queue_len> threads_count {
-                        sleep(Duration::from_millis(5));
+                        sleep(Duration::from_millis(10));
                         self.request_cond.notify_one();
                     }
                 }
