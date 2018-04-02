@@ -239,7 +239,6 @@ impl DnsServer for DnsUdpServer {
                     let request_time = current_time_millis() - request.get_start_time();
                     let mut lock = context.statistics.lock().unwrap();
                     lock.add_request_time(request_time, true);
-                    lock.print();
                 }
             })?;
         }
@@ -356,7 +355,6 @@ impl DnsServer for DnsTcpServer {
                     let request_time = current_time_millis() - request.get_start_time();
                     let mut lock = context.statistics.lock().unwrap();
                     lock.add_request_time(request_time, false);
-                    lock.print();
                 }
             })?;
         }

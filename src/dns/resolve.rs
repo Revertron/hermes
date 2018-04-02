@@ -118,7 +118,10 @@ impl DnsResolver for RecursiveDnsResolver {
 
         let labels = qname.split('.').collect::<Vec<&str>>();
         for lbl_idx in 0..labels.len()+1 {
-            let domain = labels[lbl_idx..].join(".");
+            let mut domain = labels[lbl_idx..].join(".");
+            if domain.is_empty() {
+                domain = ".".to_owned();
+            }
 
             match self.context.cache
                 .lookup(&domain, QueryType::NS)
@@ -139,15 +142,11 @@ impl DnsResolver for RecursiveDnsResolver {
             None => return Err(Error::new(ErrorKind::NotFound, "No DNS server found"))
         };
 
-        let mut try_number = 1;
-        let max_tries = 5;
         // Start querying name servers
         loop {
-            println!("{}: attempt {} to lookup {:?} {} with ns {}", current_thread_name(), try_number, qtype, qname, ns);
-
+            println!("{}: attempting to lookup {:?} {} with ns {}", current_thread_name(), qtype, qname, ns);
 
             let ns_copy = ns.clone();
-
             let server = (ns_copy.as_str(), 53);
             let response = self.context.client.send_query(qname, qtype.clone(), server, false)?;
 
@@ -174,12 +173,6 @@ impl DnsResolver for RecursiveDnsResolver {
                 let _ = self.context.cache.store(&response.answers);
                 let _ = self.context.cache.store(&response.authorities);
                 let _ = self.context.cache.store(&response.resources);
-                try_number += 1;
-
-                if try_number > max_tries {
-                    println!("Can not resolve {:?} {}", qtype, qname);
-                    return Err(Error::new(ErrorKind::NotFound, format!("Can not resolve {:?} {}", qtype, qname)))
-                }
 
                 continue;
             }
@@ -187,7 +180,9 @@ impl DnsResolver for RecursiveDnsResolver {
             // If not, we'll have to resolve the ip of a NS record
             let new_ns_name = match response.get_unresolved_ns(qname) {
                 Some(x) => x,
-                None => return Ok(response.clone())
+                None => {
+                    return Err(Error::new(ErrorKind::NotFound, format!("Can not resolve {:?} {}", qtype, qname)))
+                }
             };
 
             // Recursively resolve the NS
@@ -198,13 +193,6 @@ impl DnsResolver for RecursiveDnsResolver {
                 ns = new_ns.clone();
             } else {
                 return Ok(response.clone())
-            }
-
-            try_number += 1;
-
-            if try_number > max_tries {
-                println!("Can not resolve {:?} {}", qtype, qname);
-                return Err(Error::new(ErrorKind::NotFound, format!("Can not resolve {:?} {}", qtype, qname)))
             }
         }
     }
