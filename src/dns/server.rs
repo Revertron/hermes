@@ -247,6 +247,20 @@ impl DnsServer for DnsUdpServer {
         // Start servicing requests
         let _ = Builder::new().name("DnsUdpServer-incoming".into()).spawn(move || {
             loop {
+                // If we have a lot of requests in a queue we need to serve them first
+                if queue_len > 1 {
+                    println!("Queue size is {}", queue_len);
+                }
+                while queue_len > (threads_count / 2) {
+                    queue_len = match self.request_queue.lock() {
+                        Ok(queue) => queue.len(),
+                        Err(_e) => 0
+                    };
+
+                    self.request_cond.notify_one();
+                    sleep(Duration::from_millis(20));
+                }
+
                 // Read a query packet
                 let mut req_buffer = BytePacketBuffer::new();
                 let (_, src) = match socket.recv_from(&mut req_buffer.buf) {
@@ -254,15 +268,6 @@ impl DnsServer for DnsUdpServer {
                     Err(e) => {
                         if e.kind() != ErrorKind::TimedOut && e.raw_os_error() != Some(11) {
                             println!("Failed to read from UDP socket: {:?}", e);
-                        } else {
-                            queue_len = match self.request_queue.lock() {
-                                Ok(queue) => queue.len(),
-                                Err(_e) => 0
-                            };
-
-                            if queue_len > 0 {
-                                self.request_cond.notify_one();
-                            }
                         }
                         continue;
                     }
@@ -290,20 +295,6 @@ impl DnsServer for DnsUdpServer {
                     },
                     Err(e) => {
                         println!("Failed to send UDP request for processing: {}", e);
-                    }
-                }
-
-                if queue_len > 1 {
-                    println!("Waking up {} threads", queue_len);
-
-                    while queue_len > threads_count {
-                        queue_len = match self.request_queue.lock() {
-                            Ok(queue) => queue.len(),
-                            Err(_e) => 0
-                        };
-
-                        self.request_cond.notify_one();
-                        sleep(Duration::from_millis(10));
                     }
                 }
             }
