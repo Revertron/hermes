@@ -238,6 +238,7 @@ impl DnsServer for DnsUdpServer {
                     let request_time = current_time_millis() - request.get_start_time();
                     let mut lock = context.statistics.lock().unwrap();
                     lock.add_request_time(request_time, true);
+                    sleep(Duration::from_millis(5));
                 }
             })?;
         }
@@ -258,7 +259,7 @@ impl DnsServer for DnsUdpServer {
                     println!("Queue size is {}", queue_len);
                     self.request_cond.notify_one();
                     if queue_len> threads_count {
-                        sleep(Duration::from_millis(2));
+                        sleep(Duration::from_millis(5));
                         self.request_cond.notify_one();
                     }
                 }
