@@ -249,13 +249,15 @@ impl DnsServer for DnsUdpServer {
             loop {
                 // If we have a lot of requests in a queue we need to serve them first
                 if queue_len > 0 {
-                    queue_len = match self.request_queue.lock() {
-                        Ok(queue) => queue.len(),
-                        Err(_e) => 0
-                    };
+                    {
+                        queue_len = match self.request_queue.lock() {
+                            Ok(queue) => queue.len(),
+                            Err(_e) => 0
+                        };
+                    }
                     println!("Queue size is {}", queue_len);
                     self.request_cond.notify_one();
-                    sleep(Duration::from_millis(2));
+                    //sleep(Duration::from_millis(1));
                 }
 
                 // Read a query packet
