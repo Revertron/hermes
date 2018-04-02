@@ -252,7 +252,7 @@ impl DnsServer for DnsUdpServer {
                 let (_, src) = match socket.recv_from(&mut req_buffer.buf) {
                     Ok(x) => x,
                     Err(e) => {
-                        if e.kind() != ErrorKind::TimedOut {
+                        if e.kind() != ErrorKind::TimedOut && e.raw_os_error() != Some(11) {
                             println!("Failed to read from UDP socket: {:?}", e);
                         } else {
                             queue_len = match self.request_queue.lock() {
