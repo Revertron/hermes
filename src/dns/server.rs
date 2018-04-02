@@ -18,6 +18,7 @@ use dns::netutil::{read_packet_length, write_packet_length};
 use dns::filter::DnsFilter;
 use dns::utils::current_time_millis;
 use std::time::Duration;
+use std::io::ErrorKind;
 
 macro_rules! return_or_report {
     ( $x:expr, $message:expr ) => {
@@ -183,6 +184,7 @@ impl DnsServer for DnsUdpServer {
 
         // Bind the socket
         let socket = UdpSocket::bind((self.context.dns_bind_ip.as_ref(), self.context.dns_port))?;
+        socket.set_read_timeout(Some(Duration::from_millis(100))).unwrap();
 
         // Spawn threads for handling requests
         for thread_id in 0..self.thread_count {
@@ -241,6 +243,7 @@ impl DnsServer for DnsUdpServer {
         }
 
         let threads_count = self.context.clone().threads_udp;
+        let mut queue_len = 0;
         // Start servicing requests
         let _ = Builder::new().name("DnsUdpServer-incoming".into()).spawn(move || {
             loop {
@@ -249,7 +252,18 @@ impl DnsServer for DnsUdpServer {
                 let (_, src) = match socket.recv_from(&mut req_buffer.buf) {
                     Ok(x) => x,
                     Err(e) => {
-                        println!("Failed to read from UDP socket: {:?}", e);
+                        if e.kind() != ErrorKind::TimedOut {
+                            println!("Failed to read from UDP socket: {:?}", e);
+                        } else {
+                            queue_len = match self.request_queue.lock() {
+                                Ok(queue) => queue.len(),
+                                Err(_e) => 0
+                            };
+
+                            if queue_len > 0 {
+                                self.request_cond.notify_one();
+                            }
+                        }
                         continue;
                     }
                 };
@@ -267,7 +281,6 @@ impl DnsServer for DnsUdpServer {
 
                 request.set_start_time(start_time);
 
-                let mut queue_len = 0;
                 // Acquire lock, add request to queue, and notify waiting threads using the condition.
                 match self.request_queue.lock() {
                     Ok(mut queue) => {
