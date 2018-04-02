@@ -203,8 +203,8 @@ impl DnsServer for DnsUdpServer {
             let name = "DnsUdpServer-request-".to_string() + &thread_id.to_string();
             let _ = Builder::new().name(name).spawn(move || {
                 loop {
-                    // Acquire lock, and wait on the condition until data is
-                    // available. Then proceed with popping an entry of the queue.
+                    // Acquire lock, and wait on the condition until data is available.
+                    // Then proceed with popping an entry of the queue.
                     let (src, request) = match request_queue.lock().ok()
                         .and_then(|x| request_cond.wait(x).ok())
                         .and_then(|mut x| x.pop_front()) {
@@ -248,17 +248,14 @@ impl DnsServer for DnsUdpServer {
         let _ = Builder::new().name("DnsUdpServer-incoming".into()).spawn(move || {
             loop {
                 // If we have a lot of requests in a queue we need to serve them first
-                if queue_len > 1 {
-                    println!("Queue size is {}", queue_len);
-                }
-                while queue_len > 0 {
+                if queue_len > 0 {
                     queue_len = match self.request_queue.lock() {
                         Ok(queue) => queue.len(),
                         Err(_e) => 0
                     };
-
+                    println!("Queue size is {}", queue_len);
                     self.request_cond.notify_one();
-                    sleep(Duration::from_millis(20));
+                    sleep(Duration::from_millis(2));
                 }
 
                 // Read a query packet
