@@ -269,15 +269,22 @@ impl DnsServer for DnsUdpServer {
 
                 request.set_start_time(start_time);
 
-                // Acquire lock, add request to queue, and notify waiting threads
-                // using the condition.
+                let mut queue_len = 0;
+                // Acquire lock, add request to queue, and notify waiting threads using the condition.
                 match self.request_queue.lock() {
                     Ok(mut queue) => {
                         queue.push_back((src, request));
                         self.request_cond.notify_one();
+                        queue_len = queue.len();
                     },
                     Err(e) => {
                         println!("Failed to send UDP request for processing: {}", e);
+                    }
+                }
+                if queue_len > 0 {
+                    println!("Waking up {} threads", queue_len);
+                    for x in 1..queue_len {
+                        self.request_cond.notify_one();
                     }
                 }
             }
