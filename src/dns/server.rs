@@ -257,7 +257,10 @@ impl DnsServer for DnsUdpServer {
                     }
                     println!("Queue size is {}", queue_len);
                     self.request_cond.notify_one();
-                    //sleep(Duration::from_millis(1));
+                    if queue_len> threads_count {
+                        sleep(Duration::from_millis(2));
+                        self.request_cond.notify_one();
+                    }
                 }
 
                 // Read a query packet
