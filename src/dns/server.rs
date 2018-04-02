@@ -4,7 +4,7 @@ use std::io::{Result,Write};
 use std::net::{UdpSocket, TcpListener, TcpStream, Shutdown};
 use std::sync::{Arc,Mutex,Condvar};
 use std::sync::mpsc::{channel, Sender};
-use std::thread::Builder;
+use std::thread::{Builder,sleep};
 use std::sync::atomic::Ordering;
 use std::net::SocketAddr;
 use std::net::Ipv4Addr;
@@ -21,6 +21,7 @@ use dns::netutil::{read_packet_length, write_packet_length};
 use dns::protocol::TransientTtl;
 use dns::filter::DnsFilter;
 use dns::utils::current_time_millis;
+use std::time::Duration;
 
 macro_rules! return_or_report {
     ( $x:expr, $message:expr ) => {
@@ -281,10 +282,12 @@ impl DnsServer for DnsUdpServer {
                         println!("Failed to send UDP request for processing: {}", e);
                     }
                 }
-                if queue_len > 0 {
+
+                if queue_len > 1 {
                     println!("Waking up {} threads", queue_len);
-                    for x in 1..queue_len {
+                    for _x in 1..queue_len {
                         self.request_cond.notify_one();
+                        sleep(Duration::from_millis(100));
                     }
                 }
             }

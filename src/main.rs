@@ -141,7 +141,7 @@ fn main() {
 
     loop {
         use std::thread;
-        thread::sleep(std::time::Duration::new(0, 10000));
+        thread::sleep(std::time::Duration::from_millis(500));
     }
     // Start web server
     /*if context.enable_api {
